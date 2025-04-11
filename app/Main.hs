@@ -1,104 +1,11 @@
 module Main where
 
+import System.IO
+
 import Control.Monad
 
-data Ty =
-    Alpha Int |
-    Unit |
-    Bool |
-    Arrow Ty Ty |
-    Plus Ty Ty |
-    Cross Ty Ty
-        deriving (Show, Read)
-
-pp :: Ty -> String
-pp t = go 0 t where
-    go _ Unit = "unit"
-    go _ Bool = "bool"
-    go _ (Alpha i) = "u" ++ show i
-    go p (Cross t1 t2) = wrap (p > 5) (go 6 t1 ++ " * " ++ go 5 t2)
-    go p (Arrow t1 t2) = wrap (p > 3) (go 4 t1 ++ " -> " ++ go 3 t2)
-    go p (Plus t1 t2)  = wrap (p > 1) (go 2 t1 ++ " + " ++ go 1 t2)
-
-wrap b x = if b then "(" ++ x ++ ")" else x
-
-
-type Sub = [(Int, Ty)]
-
-occurs :: Int -> Ty -> Bool
-occurs i (Alpha j) = i == j
-occurs i (Arrow a b) = occurs i a || occurs i b
-occurs i (Cross a b) = occurs i a || occurs i b
-occurs i (Plus a b) = occurs i a || occurs i b
-occurs _ _ = False
-
-subst :: Int -> Ty -> Ty -> Ty
-subst i r (Alpha j)
-    | i == j = r
-    | otherwise = Alpha j
-subst i r (Arrow a b) = Arrow (subst i r a) (subst i r b)
-subst i r (Cross a b) = Cross (subst i r a) (subst i r b)
-subst i r (Plus a b) = Plus (subst i r a) (subst i r b)
-subst _ _ other = other
-
-subAll :: Sub -> Ty -> Ty
-subAll [] t = t
-subAll ((i,r):ss) t = subAll ss (subst i r t)
-
-mgu :: Ty -> Ty -> Either String Sub
-mgu Unit Unit = Right []  -- delete
-mgu Bool Bool = Right []  -- delete
-mgu (Alpha i) (Alpha j)
-    | i == j = Right [] -- delete
-    | otherwise = Right [(j, Alpha i)] -- eliminate
-mgu (Alpha i) t
-    | occurs i t = Left "occurs check failed"
-    | otherwise = Right [(i, t)] -- eliminate
-mgu t (Alpha i) = mgu (Alpha i) t -- swap
-mgu (Arrow a b) (Arrow c d) = do -- decompose
-    sub1 <- mgu a c
-    sub2 <- mgu (subAll sub1 b) (subAll sub1 d)
-    Right (sub1 ++ sub2)
-mgu (Cross a b) (Cross c d) = do
-    sub1 <- mgu a c
-    sub2 <- mgu (subAll sub1 b) (subAll sub1 d)
-    Right (sub1 ++ sub2)
-mgu (Plus a b) (Plus c d) = do
-    sub1 <- mgu a c
-    sub2 <- mgu (subAll sub1 b) (subAll sub1 d)
-    Right (sub1 ++ sub2)
-mgu _ _ = Left "can't unify" -- conflict
-
-
-data Expr =
-    Var String |
-    Star |
-    TT |
-    FF |
-    Pair Expr Expr |
-    Fst Expr |
-    Snd Expr |
-    L Expr |
-    R Expr |
-    Case Expr Expr Expr | -- incomplete
-    App Expr Expr |
-    Lam String Expr |
-    LamA String Ty Expr
-        deriving (Show, Read)
-
--- x
--- ()
--- true
--- false
--- (e, e)
--- #0 e
--- #1 e
--- L e
--- R e
--- case e {L x -> e; R y -> e}
--- e e
--- \x -> e
--- \x : ty -> e
+import Ty
+import Expr hiding (bind)
 
 data Check a =
     Done a |
@@ -231,14 +138,38 @@ e2 = Lam "f" (Lam "x" (App (Var "f") (App (Var "f") (Var "x"))))
 
 main :: IO ()
 main = do
+    putStrLn "Toy language type inference REPL 1.0.0.95"
+    putStrLn ""
+    putStrLn "The language:"
+    putStrLn "e = x, e e, \\x -> e,"
+    putStrLn "    (e,e), #0 e, #1 e,"
+    putStrLn "    L e, R e, case e {L x -> e; R y -> e}, "
+    putStrLn "    true, false, ()"
+    putStrLn ""
+    putStrLn "The types:"
+    putStrLn "t = unit, bool, t -> t, t * t, t + t, unknowns"
+    putStrLn ""
+    loop
+
+loop :: IO ()
+loop = do
+    putStr "> "
+    hFlush stdout
     l <- getLine
-    case reads l of
-        [(e,"")] -> do
+    case parseExpr l of
+        Right e -> do
+            putStrLn "program:"
             print (e :: Expr)
+            putStrLn ""
             case runCheck 1 (infer [] e) of
-                Right (s, t) -> putStrLn (pp t)
-                Left msg -> putStrLn msg
-            main
-        _ -> do
-            putStrLn "no parse"
-            main
+                Right (s, t) -> do
+                    putStrLn "has type:"
+                    putStrLn (pp t)
+                Left msg -> do
+                    putStrLn "inference error:"
+                    putStrLn msg
+            putStrLn ""
+            loop
+        Left msg -> do
+            putStrLn msg
+            loop
