@@ -149,6 +149,9 @@ main = do
     putStrLn "The types:"
     putStrLn "t = unit, bool, t -> t, t * t, t + t, unknowns"
     putStrLn ""
+    putStrLn "Currently won't parse:"
+    putStrLn "   \\x : type -> e"
+    putStrLn ""
     loop
 
 loop :: IO ()
