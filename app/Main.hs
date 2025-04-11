@@ -236,7 +236,7 @@ main = do
         [(e,"")] -> do
             print (e :: Expr)
             case runCheck 1 (infer [] e) of
-                Right (s, t) -> print t
+                Right (s, t) -> putStrLn (pp t)
                 Left msg -> putStrLn msg
             main
         _ -> do
